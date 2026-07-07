@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.database.database import obter_sessao
 
 from app.schemas.invoice import (
+    RespostaDetalheFatura,
     RespostaExtracaoFatura,
     RespostaFaturaLista,
     RespostaFaturaSalva,
@@ -22,9 +23,14 @@ from app.schemas.invoice import (
     RespostaTransacoesFatura,
 )
 
-from app.schemas.transaction import RespostaTransacao
+from app.schemas.transaction import (
+    AtualizacaoTransacao,
+    RespostaExclusaoTransacao,
+    RespostaTransacao,
+)
 
 from app.services.invoice_parser import (
+    TransacaoAnalisada,
     analisar_transacoes,
     extrair_metadados_da_fatura,
     gerar_resumo_das_transacoes,
@@ -32,6 +38,7 @@ from app.services.invoice_parser import (
 )
 
 from app.services.invoice_repository import (
+    buscar_fatura_por_id,
     listar_faturas,
     salvar_fatura,
 )
@@ -39,6 +46,12 @@ from app.services.invoice_repository import (
 from app.services.pdf_extractor import (
     extrair_linhas_do_pdf,
     extrair_texto_do_pdf,
+)
+
+from app.services.transaction_repository import (
+    atualizar_transacao,
+    buscar_transacao_por_id,
+    excluir_transacao,
 )
 
 
@@ -71,13 +84,11 @@ async def extrair_fatura(
         )
 
     try:
-
         extraction = extrair_texto_do_pdf(
             content
         )
 
     except Exception:
-
         raise HTTPException(
             status_code=422,
             detail="Não foi possível processar o PDF.",
@@ -115,13 +126,11 @@ async def inspecionar_linhas_da_fatura(
         )
 
     try:
-
         document_lines = extrair_linhas_do_pdf(
             content
         )
 
     except Exception:
-
         raise HTTPException(
             status_code=422,
             detail="Não foi possível processar o PDF.",
@@ -165,7 +174,6 @@ async def analisar_fatura(
         )
 
     try:
-
         document_lines = extrair_linhas_do_pdf(
             content
         )
@@ -187,7 +195,6 @@ async def analisar_fatura(
         )
 
     except Exception:
-
         raise HTTPException(
             status_code=422,
             detail="Não foi possível analisar a fatura.",
@@ -216,7 +223,6 @@ async def analisar_fatura(
     ]
 
     return RespostaTransacoesFatura(
-
         filename=file.filename or "arquivo.pdf",
 
         invoice=RespostaMetadadosFatura(
@@ -235,7 +241,9 @@ async def analisar_fatura(
 
         category_summary=categories,
 
-        total_transactions=len(transactions),
+        total_transactions=len(
+            transactions
+        ),
 
         transactions=transactions,
     )
@@ -265,7 +273,6 @@ async def importar_fatura(
         )
 
     try:
-
         document_lines = extrair_linhas_do_pdf(
             content
         )
@@ -286,7 +293,6 @@ async def importar_fatura(
         )
 
     except Exception:
-
         session.rollback()
 
         raise HTTPException(
@@ -331,3 +337,188 @@ def consultar_faturas(
         )
         for invoice in invoices
     ]
+
+
+@router.get(
+    "/{invoice_id}",
+    response_model=RespostaDetalheFatura,
+)
+def consultar_detalhes_da_fatura(
+    invoice_id: int,
+    session: Session = Depends(obter_sessao),
+) -> RespostaDetalheFatura:
+
+    invoice = buscar_fatura_por_id(
+        session=session,
+        invoice_id=invoice_id,
+    )
+
+    if invoice is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Fatura não encontrada.",
+        )
+
+    parsed_transactions = [
+        TransacaoAnalisada(
+            date=transaction.date,
+            card=transaction.card,
+            description=transaction.description,
+            amount=transaction.amount,
+            type=transaction.type,
+            category=transaction.category,
+            page=transaction.page,
+        )
+        for transaction in invoice.transactions
+    ]
+
+    transaction_summary = gerar_resumo_das_transacoes(
+        parsed_transactions
+    )
+
+    category_summary = gerar_resumo_por_categoria(
+        parsed_transactions
+    )
+
+    transactions = [
+        RespostaTransacao(
+            id=transaction.id,
+            date=transaction.date,
+            card=transaction.card,
+            description=transaction.description,
+            amount=transaction.amount,
+            type=transaction.type,
+            category=transaction.category,
+            page=transaction.page,
+        )
+        for transaction in invoice.transactions
+    ]
+
+    categories = [
+        RespostaResumoCategoria(
+            category=item["category"],
+            total_transactions=item["total_transactions"],
+            total_amount=item["total_amount"],
+        )
+        for item in category_summary
+    ]
+
+    return RespostaDetalheFatura(
+        id=invoice.id,
+
+        filename=invoice.filename,
+
+        invoice=RespostaMetadadosFatura(
+            total_amount=invoice.total_amount,
+            due_date=invoice.due_date,
+            period_start=invoice.period_start,
+            period_end=invoice.period_end,
+        ),
+
+        summary=RespostaResumoTransacoes(
+            compra=transaction_summary["compra"],
+            estorno=transaction_summary["estorno"],
+            pagamento=transaction_summary["pagamento"],
+            financiamento=transaction_summary["financiamento"],
+        ),
+
+        category_summary=categories,
+
+        total_transactions=len(
+            transactions
+        ),
+
+        transactions=transactions,
+    )
+
+
+@router.patch(
+    "/{invoice_id}/transactions/{transaction_id}",
+    response_model=RespostaTransacao,
+)
+def editar_transacao(
+    invoice_id: int,
+    transaction_id: int,
+    update_data: AtualizacaoTransacao,
+    session: Session = Depends(obter_sessao),
+) -> RespostaTransacao:
+
+    transaction = buscar_transacao_por_id(
+        session=session,
+        invoice_id=invoice_id,
+        transaction_id=transaction_id,
+    )
+
+    if transaction is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Transação não encontrada nesta fatura.",
+        )
+
+    try:
+        updated_transaction = atualizar_transacao(
+            session=session,
+            transaction=transaction,
+            update_data=update_data,
+        )
+
+    except Exception:
+        session.rollback()
+
+        raise HTTPException(
+            status_code=422,
+            detail="Não foi possível atualizar a transação.",
+        )
+
+    return RespostaTransacao(
+        id=updated_transaction.id,
+        date=updated_transaction.date,
+        card=updated_transaction.card,
+        description=updated_transaction.description,
+        amount=updated_transaction.amount,
+        type=updated_transaction.type,
+        category=updated_transaction.category,
+        page=updated_transaction.page,
+    )
+
+
+@router.delete(
+    "/{invoice_id}/transactions/{transaction_id}",
+    response_model=RespostaExclusaoTransacao,
+)
+def remover_transacao(
+    invoice_id: int,
+    transaction_id: int,
+    session: Session = Depends(obter_sessao),
+) -> RespostaExclusaoTransacao:
+
+    transaction = buscar_transacao_por_id(
+        session=session,
+        invoice_id=invoice_id,
+        transaction_id=transaction_id,
+    )
+
+    if transaction is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Transação não encontrada nesta fatura.",
+        )
+
+    try:
+        excluir_transacao(
+            session=session,
+            transaction=transaction,
+        )
+
+    except Exception:
+        session.rollback()
+
+        raise HTTPException(
+            status_code=422,
+            detail="Não foi possível excluir a transação.",
+        )
+
+    return RespostaExclusaoTransacao(
+        message="Transação excluída com sucesso.",
+        transaction_id=transaction_id,
+    )

@@ -1,9 +1,27 @@
 from __future__ import annotations
 
-from sqlalchemy import Float, ForeignKey, Integer, String
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from datetime import date
+from typing import TYPE_CHECKING
+
+from sqlalchemy import (
+    Date,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+)
+
+from sqlalchemy.orm import (
+    Mapped,
+    mapped_column,
+    relationship,
+)
 
 from app.database.database import Base
+
+
+if TYPE_CHECKING:
+    from app.models.fatura import Fatura
 
 
 class Transacao(Base):
@@ -15,14 +33,19 @@ class Transacao(Base):
         autoincrement=True,
     )
 
-    invoice_id: Mapped[int] = mapped_column(
+    invoice_id: Mapped[int | None] = mapped_column(
         ForeignKey("invoices.id"),
-        nullable=False,
+        nullable=True,
     )
 
     date: Mapped[str] = mapped_column(
         String(20),
         nullable=False,
+    )
+
+    transaction_date: Mapped[date | None] = mapped_column(
+        Date,
+        nullable=True,
     )
 
     card: Mapped[str | None] = mapped_column(
@@ -55,6 +78,6 @@ class Transacao(Base):
         nullable=False,
     )
 
-    invoice: Mapped["Fatura"] = relationship(
+    invoice: Mapped[Fatura | None] = relationship(
         back_populates="transactions",
     )

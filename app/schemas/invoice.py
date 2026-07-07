@@ -67,3 +67,13 @@ class RespostaFaturaLista(BaseModel):
     period_start: str | None
     period_end: str | None
     total_transactions: int
+
+
+class RespostaDetalheFatura(BaseModel):
+    id: int
+    filename: str
+    invoice: RespostaMetadadosFatura
+    summary: RespostaResumoTransacoes
+    category_summary: list[RespostaResumoCategoria]
+    total_transactions: int
+    transactions: list[RespostaTransacao]

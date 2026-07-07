@@ -1,11 +1,16 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, Float, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.database import Base
+
+
+if TYPE_CHECKING:
+    from app.models.transaction import Transacao
 
 
 class Fatura(Base):
@@ -48,7 +53,7 @@ class Fatura(Base):
         nullable=False,
     )
 
-    transactions: Mapped[list["Transacao"]] = relationship(
+    transactions: Mapped[list[Transacao]] = relationship(
         back_populates="invoice",
         cascade="all, delete-orphan",
     )

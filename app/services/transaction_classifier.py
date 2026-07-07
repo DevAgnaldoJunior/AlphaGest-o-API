@@ -9,6 +9,7 @@ CATEGORY_RULES = {
         "uber rides",
         "uber trip",
     ],
+
     "Alimentação": [
         "ifood",
         "restaurante",
@@ -19,21 +20,27 @@ CATEGORY_RULES = {
         "mercadinho",
         "assai",
     ],
+
     "Compras": [
         "shopee",
         "aliexpress",
         "cea",
     ],
+
     "Combustível": [
         "posto",
-        "gas",
         "gasolina",
         "combustivel",
+        "shell",
+        "ipiranga",
+        "petrobras",
     ],
+
     "Lazer": [
         "zigpay",
         "espaco cultural",
     ],
+
     "Serviços": [
         "telefonica",
         "papelaria",
@@ -41,7 +48,10 @@ CATEGORY_RULES = {
 }
 
 
-def normalizar_texto(text: str) -> str:
+def normalizar_texto(
+    text: str,
+) -> str:
+
     normalized = unicodedata.normalize(
         "NFKD",
         text,
@@ -53,7 +63,11 @@ def normalizar_texto(text: str) -> str:
         if not unicodedata.combining(character)
     )
 
-    return text_without_accents.lower().strip()
+    return (
+        text_without_accents
+        .lower()
+        .strip()
+    )
 
 
 def categorizar_transacao(
@@ -72,12 +86,19 @@ def categorizar_transacao(
     )
 
     for category, keywords in CATEGORY_RULES.items():
+
         for keyword in keywords:
+
             normalized_keyword = normalizar_texto(
                 keyword
             )
 
-            if normalized_keyword in normalized_description:
+            if (
+                normalized_keyword
+                in
+                normalized_description
+            ):
+
                 return category
 
     return "Outros"

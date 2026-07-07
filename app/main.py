@@ -2,6 +2,10 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from fastapi.middleware.cors import (
+    CORSMiddleware,
+)
+
 from app.api.routes.dashboard import (
     router as dashboard_router,
 )
@@ -37,13 +41,35 @@ async def gerenciar_ciclo_de_vida(
 
 app = FastAPI(
     title="Alpha API",
+
     description=(
         "API para organização financeira, "
         "processamento de faturas e "
         "análise de comportamento financeiro."
     ),
+
     version="1.0.0",
+
     lifespan=gerenciar_ciclo_de_vida,
+)
+
+
+ORIGENS_PERMITIDAS = [
+    "http://localhost:4200",
+    "http://127.0.0.1:4200",
+]
+
+
+app.add_middleware(
+    CORSMiddleware,
+
+    allow_origins=ORIGENS_PERMITIDAS,
+
+    allow_credentials=True,
+
+    allow_methods=["*"],
+
+    allow_headers=["*"],
 )
 
 

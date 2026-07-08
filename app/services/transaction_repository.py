@@ -40,6 +40,25 @@ def buscar_transacao_por_id(
     return transaction
 
 
+def buscar_transacao_global_por_id(
+    session: Session,
+    transaction_id: int,
+) -> Transacao | None:
+
+    statement = (
+        select(Transacao)
+        .where(
+            Transacao.id == transaction_id
+        )
+    )
+
+    transaction = session.scalar(
+        statement
+    )
+
+    return transaction
+
+
 def cadastrar_compra_manual(
     session: Session,
     purchase_data: CadastroCompraManual,
@@ -52,23 +71,31 @@ def cadastrar_compra_manual(
 
     transaction = Transacao(
         invoice_id=invoice_id,
+
         date=date_text,
+
         transaction_date=(
             purchase_data.transaction_date
         ),
+
         card=purchase_data.card,
+
         description=(
             purchase_data
             .description
             .strip()
         ),
+
         amount=purchase_data.amount,
+
         type="compra",
+
         category=(
             purchase_data
             .category
             .strip()
         ),
+
         page=0,
     )
 
@@ -103,10 +130,14 @@ def atualizar_transacao(
 
         if new_date is not None:
 
-            transaction.transaction_date = new_date
-
-            transaction.date = formatar_data_para_texto(
+            transaction.transaction_date = (
                 new_date
+            )
+
+            transaction.date = (
+                formatar_data_para_texto(
+                    new_date
+                )
             )
 
     for field, value in changes.items():
@@ -171,7 +202,9 @@ def filtrar_transacoes(
         statement = statement.where(
             func.upper(
                 Transacao.date
-            ) == date_text.upper()
+            )
+            ==
+            date_text.upper()
         )
 
     if month:
@@ -189,27 +222,33 @@ def filtrar_transacoes(
         statement = statement.where(
             func.lower(
                 Transacao.category
-            ) == category.lower()
+            )
+            ==
+            category.lower()
         )
 
     if transaction_type:
 
         statement = statement.where(
-            Transacao.type == transaction_type
+            Transacao.type
+            ==
+            transaction_type
         )
 
     if start_date is not None:
 
         statement = statement.where(
             Transacao.transaction_date
-            >= start_date
+            >=
+            start_date
         )
 
     if end_date is not None:
 
         statement = statement.where(
             Transacao.transaction_date
-            <= end_date
+            <=
+            end_date
         )
 
     statement = statement.order_by(
@@ -246,6 +285,7 @@ def identificar_origem_da_transacao(
 ) -> str:
 
     if transaction.invoice_id is None:
+
         return "lancamento_avulso"
 
     return "fatura"

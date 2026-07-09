@@ -1,6 +1,7 @@
 from datetime import date as Date
 from typing import Literal
 
+
 from pydantic import (
     BaseModel,
     Field,
@@ -28,6 +29,8 @@ class RespostaTransacao(BaseModel):
 
     date: str
 
+    transaction_date: Date | None = None
+
     card: str | None
 
     description: str
@@ -38,7 +41,7 @@ class RespostaTransacao(BaseModel):
 
     category: str
 
-    origin: OrigemTransacao = "fatura"
+    origin: str
 
     page: int
 

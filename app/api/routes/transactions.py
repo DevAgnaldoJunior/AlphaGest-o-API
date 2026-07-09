@@ -55,6 +55,8 @@ def construir_resposta_transacao(
 
         date=transaction.date,
 
+        transaction_date=transaction.transaction_date,
+
         card=transaction.card,
 
         description=transaction.description,
@@ -73,7 +75,6 @@ def construir_resposta_transacao(
 
         page=transaction.page,
     )
-
 
 @router.post(
     "/manual",

@@ -21,6 +21,7 @@ from app.schemas.invoice import (
     RespostaResumoCategoria,
     RespostaResumoTransacoes,
     RespostaTransacoesFatura,
+    RespostaExclusaoFatura,
 )
 
 from app.schemas.transaction import (
@@ -52,6 +53,7 @@ from app.services.transaction_repository import (
     atualizar_transacao,
     buscar_transacao_por_id,
     excluir_transacao,
+    identificar_origem_da_transacao,
 )
 
 
@@ -202,12 +204,16 @@ async def analisar_fatura(
 
     transactions = [
         RespostaTransacao(
+            id=None,
+            invoice_id=None,
             date=transaction.date,
+            transaction_date=None,
             card=transaction.card,
             description=transaction.description,
             amount=transaction.amount,
             type=transaction.type,
             category=transaction.category,
+            origin="fatura",
             page=transaction.page,
         )
         for transaction in parsed_transactions
@@ -339,10 +345,7 @@ def consultar_faturas(
     ]
 
 
-@router.get(
-    "/{invoice_id}",
-    response_model=RespostaDetalheFatura,
-)
+@router.get("/{invoice_id}",response_model=RespostaDetalheFatura,)
 def consultar_detalhes_da_fatura(
     invoice_id: int,
     session: Session = Depends(obter_sessao),
@@ -383,12 +386,17 @@ def consultar_detalhes_da_fatura(
     transactions = [
         RespostaTransacao(
             id=transaction.id,
+            invoice_id=transaction.invoice_id,
             date=transaction.date,
+            transaction_date=transaction.transaction_date,
             card=transaction.card,
             description=transaction.description,
             amount=transaction.amount,
             type=transaction.type,
             category=transaction.category,
+            origin=identificar_origem_da_transacao(
+                transaction
+            ),
             page=transaction.page,
         )
         for transaction in invoice.transactions
@@ -432,6 +440,85 @@ def consultar_detalhes_da_fatura(
     )
 
 
+
+
+@router.delete(
+    "/{invoice_id}",
+    response_model=RespostaExclusaoFatura,
+)
+def excluir_fatura(
+    invoice_id: int,
+    session: Session = Depends(obter_sessao),
+) -> RespostaExclusaoFatura:
+
+    invoice = buscar_fatura_por_id(
+        session=session,
+        invoice_id=invoice_id,
+    )
+
+    if invoice is None:
+
+        raise HTTPException(
+            status_code=404,
+            detail="Fatura não encontrada.",
+        )
+
+
+    total_transactions = len(
+        invoice.transactions
+    )
+
+
+    try:
+
+        for transaction in list(
+            invoice.transactions
+        ):
+
+            session.delete(
+                transaction
+            )
+
+
+        session.delete(
+            invoice
+        )
+
+
+        session.commit()
+
+
+    except Exception as error:
+
+        session.rollback()
+
+
+        print(
+            f"Erro ao excluir fatura: {error}"
+        )
+
+
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Não foi possível excluir "
+                "a fatura."
+            ),
+        )
+
+
+    return RespostaExclusaoFatura(
+        message=(
+            "Fatura e transações vinculadas "
+            "excluídas com sucesso."
+        ),
+        invoice_id=invoice_id,
+        deleted_transactions=total_transactions,
+    )
+
+
+
+
 @router.patch(
     "/{invoice_id}/transactions/{transaction_id}",
     response_model=RespostaTransacao,
@@ -472,12 +559,17 @@ def editar_transacao(
 
     return RespostaTransacao(
         id=updated_transaction.id,
+        invoice_id=updated_transaction.invoice_id,
         date=updated_transaction.date,
+        transaction_date=updated_transaction.transaction_date,
         card=updated_transaction.card,
         description=updated_transaction.description,
         amount=updated_transaction.amount,
         type=updated_transaction.type,
         category=updated_transaction.category,
+        origin=identificar_origem_da_transacao(
+            updated_transaction
+        ),
         page=updated_transaction.page,
     )
 

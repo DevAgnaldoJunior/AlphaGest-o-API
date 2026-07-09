@@ -77,3 +77,9 @@ class RespostaDetalheFatura(BaseModel):
     category_summary: list[RespostaResumoCategoria]
     total_transactions: int
     transactions: list[RespostaTransacao]
+
+    
+class RespostaExclusaoFatura(BaseModel):
+    message: str
+    invoice_id: int
+    deleted_transactions: int

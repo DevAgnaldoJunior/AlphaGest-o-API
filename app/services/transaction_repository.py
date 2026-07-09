@@ -269,17 +269,33 @@ def calcular_total_das_transacoes(
     transactions: list[Transacao],
 ) -> float:
 
-    total = sum(
-        transaction.amount
-        for transaction in transactions
-    )
+    total = 0.0
+
+    for transaction in transactions:
+
+        if transaction.type in (
+            "compra",
+            "financiamento",
+        ):
+
+            total += abs(
+                transaction.amount
+            )
+
+            continue
+
+
+        if transaction.type == "estorno":
+
+            total -= abs(
+                transaction.amount
+            )
+
 
     return round(
         total,
         2,
     )
-
-
 def identificar_origem_da_transacao(
     transaction: Transacao,
 ) -> str:
@@ -289,3 +305,96 @@ def identificar_origem_da_transacao(
         return "lancamento_avulso"
 
     return "fatura"
+
+def listar_opcoes_dos_filtros(
+    session: Session,
+) -> dict:
+
+    cards_statement = (
+        select(
+            Transacao.card
+        )
+        .where(
+            Transacao.card.is_not(None),
+            Transacao.card != "",
+        )
+        .distinct()
+        .order_by(
+            Transacao.card.asc()
+        )
+    )
+
+
+    categories_statement = (
+        select(
+            Transacao.category
+        )
+        .where(
+            Transacao.category.is_not(None),
+            Transacao.category != "",
+        )
+        .distinct()
+        .order_by(
+            Transacao.category.asc()
+        )
+    )
+
+
+    types_statement = (
+        select(
+            Transacao.type
+        )
+        .where(
+            Transacao.type.is_not(None),
+            Transacao.type != "",
+        )
+        .distinct()
+        .order_by(
+            Transacao.type.asc()
+        )
+    )
+
+
+    dates_statement = select(
+        func.min(
+            Transacao.transaction_date
+        ),
+        func.max(
+            Transacao.transaction_date
+        ),
+    )
+
+
+    cards = list(
+        session.scalars(
+            cards_statement
+        ).all()
+    )
+
+
+    categories = list(
+        session.scalars(
+            categories_statement
+        ).all()
+    )
+
+
+    types = list(
+        session.scalars(
+            types_statement
+        ).all()
+    )
+
+
+    min_date, max_date = session.execute(
+        dates_statement
+    ).one()
+
+
+    return {
+        "cards": cards,
+        "categories": categories,
+        "types": types,
+        "min_date": min_date,
+        "max_date": max_date,
+    }

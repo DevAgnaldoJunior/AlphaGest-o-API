@@ -19,6 +19,7 @@ from app.schemas.transaction import (
     RespostaExclusaoTransacao,
     RespostaFiltroTransacoes,
     RespostaFiltrosTransacoes,
+    RespostaOpcoesFiltrosTransacoes,
     RespostaTransacao,
     TipoTransacao,
 )
@@ -35,6 +36,7 @@ from app.services.transaction_repository import (
     excluir_transacao,
     filtrar_transacoes,
     identificar_origem_da_transacao,
+    listar_opcoes_dos_filtros,
 )
 
 
@@ -144,6 +146,35 @@ def cadastrar_compra(
     return construir_resposta_transacao(
         transaction
     )
+
+
+@router.get(
+    "/filter-options",
+    response_model=RespostaOpcoesFiltrosTransacoes,
+)
+def consultar_opcoes_dos_filtros(
+    session: Session = Depends(
+        obter_sessao
+    ),
+) -> RespostaOpcoesFiltrosTransacoes:
+
+    options = listar_opcoes_dos_filtros(
+        session=session
+    )
+
+
+    return RespostaOpcoesFiltrosTransacoes(
+        cards=options["cards"],
+
+        categories=options["categories"],
+
+        types=options["types"],
+
+        min_date=options["min_date"],
+
+        max_date=options["max_date"],
+    )
+
 
 
 @router.patch(

@@ -41,7 +41,7 @@ class RespostaTransacao(BaseModel):
 
     category: str
 
-    origin: str
+    origin: str 
 
     page: int
 
@@ -118,3 +118,12 @@ class RespostaFiltroTransacoes(BaseModel):
     total_amount: float
 
     transactions: list[RespostaTransacao]
+
+
+class RespostaOpcoesFiltrosTransacoes(BaseModel):
+    cards: list[str]
+    categories: list[str]
+    types: list[TipoTransacao]
+
+    min_date: Date | None = None
+    max_date: Date | None = None  

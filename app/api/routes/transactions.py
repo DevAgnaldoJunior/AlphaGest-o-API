@@ -7,6 +7,10 @@ from fastapi import (
     Query,
 )
 
+from app.services.user_login.auth_service import (
+    obter_usuario_autenticado,
+)
+
 from sqlalchemy.orm import Session
 
 from app.database.database import (
@@ -43,6 +47,11 @@ from app.services.transaction_repository import (
 router = APIRouter(
     prefix="/transactions",
     tags=["Transactions"],
+    dependencies=[
+        Depends(
+            obter_usuario_autenticado
+        )
+    ],
 )
 
 

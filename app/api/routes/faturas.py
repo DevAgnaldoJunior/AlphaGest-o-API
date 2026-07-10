@@ -10,6 +10,10 @@ from sqlalchemy.orm import Session
 
 from app.database.database import obter_sessao
 
+from app.services.user_login.auth_service import (
+    obter_usuario_autenticado,
+)
+
 from app.schemas.invoice import (
     RespostaDetalheFatura,
     RespostaExtracaoFatura,
@@ -60,6 +64,11 @@ from app.services.transaction_repository import (
 router = APIRouter(
     prefix="/invoices",
     tags=["Invoices"],
+    dependencies=[
+        Depends(
+            obter_usuario_autenticado
+        )
+    ],
 )
 
 

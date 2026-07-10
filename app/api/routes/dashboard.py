@@ -11,6 +11,10 @@ from sqlalchemy.orm import Session
 
 from app.database.database import obter_sessao
 
+from app.services.user_login.auth_service import (
+    obter_usuario_autenticado,
+)
+
 from app.schemas.dashboard import (
     RespostaComportamento,
     RespostaComprasSemCartao,
@@ -55,6 +59,11 @@ from app.services.transaction_repository import (
 router = APIRouter(
     prefix="/dashboard",
     tags=["Dashboard"],
+    dependencies=[
+        Depends(
+            obter_usuario_autenticado
+        )
+    ],
 )
 
 

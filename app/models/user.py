@@ -1,5 +1,8 @@
+from datetime import datetime
+
 from sqlalchemy import (
     Boolean,
+    DateTime,
     String,
 )
 
@@ -46,4 +49,20 @@ class Usuario(Base):
         Boolean,
         default=True,
         nullable=False,
+    )
+
+
+    privacy_terms_accepted_at: Mapped[
+        datetime | None
+    ] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+
+    privacy_terms_version: Mapped[
+        str | None
+    ] = mapped_column(
+        String(20),
+        nullable=True,
     )

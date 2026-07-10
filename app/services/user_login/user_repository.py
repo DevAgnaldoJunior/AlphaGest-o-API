@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from sqlalchemy import select
 
 from sqlalchemy.orm import Session
@@ -10,12 +12,19 @@ def buscar_usuario_por_email(
     email: str,
 ) -> Usuario | None:
 
+    normalized_email = (
+        email
+        .lower()
+        .strip()
+    )
+
+
     statement = (
         select(Usuario)
         .where(
             Usuario.email
             ==
-            email.lower().strip()
+            normalized_email
         )
     )
 
@@ -48,18 +57,32 @@ def criar_usuario(
     name: str,
     email: str,
     password_hash: str,
+    privacy_terms_accepted_at:
+        datetime | None = None,
+    privacy_terms_version:
+        str | None = None,
 ) -> Usuario:
 
     usuario = Usuario(
         name=name.strip(),
 
-        email=email
-        .lower()
-        .strip(),
+        email=(
+            email
+            .lower()
+            .strip()
+        ),
 
         password_hash=password_hash,
 
         active=True,
+
+        privacy_terms_accepted_at=(
+            privacy_terms_accepted_at
+        ),
+
+        privacy_terms_version=(
+            privacy_terms_version
+        ),
     )
 
 

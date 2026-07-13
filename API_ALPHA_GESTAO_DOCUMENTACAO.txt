@@ -1,0 +1,862 @@
+DOCUMENTAÇÃO DA API — ALPHA GESTÃO
+Versão do documento: 1.0
+Base URL local: http://127.0.0.1:8000/api/v1
+Formato de comunicação: JSON
+Autenticação: JWT Bearer Token
+
+============================================================
+1. VISÃO GERAL
+============================================================
+
+A API do Alpha Gestão é responsável por autenticação de usuários, importação de faturas, consulta e gestão de transações, filtros financeiros e geração de dados analíticos para o dashboard.
+
+A aplicação segue uma arquitetura REST, com rotas agrupadas por domínio:
+
+- /auth: autenticação, cadastro e usuário autenticado.
+- /invoices: importação, listagem, consulta e exclusão de faturas.
+- /transactions: consulta, filtros, cadastro manual, edição e exclusão de transações.
+- /dashboard: consolidação analítica dos dados financeiros.
+
+As rotas privadas exigem token JWT no cabeçalho Authorization.
+
+Exemplo:
+Authorization: Bearer <access_token>
+
+Observação importante: no estado atual da API, a autenticação já identifica o usuário, mas o isolamento dos dados por usuário ainda precisa ser implementado com user_id em faturas e transações.
+
+============================================================
+2. AUTENTICAÇÃO E CADASTRO
+============================================================
+
+2.1. POST /auth/register
+------------------------------------------------------------
+Cria uma nova conta de usuário.
+
+O cadastro exige aceite obrigatório dos Termos de Uso e ciência do Aviso de Privacidade. O backend valida esse aceite, portanto não depende apenas do frontend.
+
+Request body:
+{
+  "name": "Agnaldo Júnior",
+  "email": "agnaldo@email.com",
+  "password": "senha1234",
+  "password_confirmation": "senha1234",
+  "privacy_acceptance": true
+}
+
+Campos:
+- name: nome do usuário. Deve ter entre 2 e 120 caracteres.
+- email: e-mail válido e único.
+- password: senha com no mínimo 8 caracteres.
+- password_confirmation: confirmação da senha.
+- privacy_acceptance: deve ser true para permitir o cadastro.
+
+Response 201:
+{
+  "id": 2,
+  "name": "Agnaldo Júnior",
+  "email": "agnaldo@email.com",
+  "message": "Usuário criado com sucesso."
+}
+
+Possíveis erros:
+- 400: as senhas não coincidem.
+- 409: já existe usuário cadastrado com o e-mail informado.
+- 422: aceite de privacidade não informado ou dados inválidos.
+
+Boas práticas aplicadas:
+- A senha é armazenada como hash, nunca em texto puro.
+- O aceite de privacidade é validado no backend.
+- O e-mail é normalizado antes da persistência.
+- O cadastro registra versão dos termos e data do aceite.
+
+
+2.2. POST /auth/login
+------------------------------------------------------------
+Autentica um usuário e retorna um token JWT.
+
+Request body:
+{
+  "email": "agnaldo@email.com",
+  "password": "senha1234"
+}
+
+Response 200:
+{
+  "access_token": "<jwt_token>",
+  "token_type": "bearer",
+  "user": {
+    "id": 2,
+    "name": "Agnaldo Júnior",
+    "email": "agnaldo@email.com"
+  }
+}
+
+Possíveis erros:
+- 401: e-mail ou senha inválidos.
+
+Uso do token:
+Após o login, o frontend deve armazenar o access_token e enviá-lo nas próximas requisições privadas.
+
+Header:
+Authorization: Bearer <access_token>
+
+
+2.3. GET /auth/me
+------------------------------------------------------------
+Retorna os dados do usuário autenticado.
+
+Autenticação: obrigatória.
+
+Response 200:
+{
+  "id": 2,
+  "name": "Agnaldo Júnior",
+  "email": "agnaldo@email.com"
+}
+
+Possíveis erros:
+- 401 ou 403: token ausente, inválido ou expirado.
+
+============================================================
+3. FATURAS
+============================================================
+
+3.1. POST /invoices/extract
+------------------------------------------------------------
+Extrai informações brutas de uma fatura enviada em PDF.
+
+Uso principal:
+- Leitura inicial do arquivo.
+- Extração de linhas relevantes.
+- Apoio ao fluxo de importação.
+
+Request:
+- multipart/form-data
+- Campo: file
+
+Response:
+O retorno depende do conteúdo extraído do PDF e da estrutura do parser atual.
+
+Observação:
+Essa rota é voltada ao processamento interno e diagnóstico da extração.
+
+
+3.2. POST /invoices/inspect-lines
+------------------------------------------------------------
+Inspeciona as linhas extraídas de uma fatura.
+
+Uso principal:
+- Depuração do parser.
+- Conferência do conteúdo textual identificado no PDF.
+
+Request:
+- multipart/form-data
+- Campo: file
+
+Response:
+Lista ou estrutura de linhas identificadas no documento.
+
+
+3.3. POST /invoices/parse
+------------------------------------------------------------
+Interpreta a fatura enviada e retorna os dados estruturados sem persistir no banco.
+
+Request:
+- multipart/form-data
+- Campo: file
+
+Response esperado:
+{
+  "metadata": {
+    "filename": "fatura.pdf",
+    "due_date": "2026-07-10",
+    "period_start": "2026-06-01",
+    "period_end": "2026-06-30"
+  },
+  "transactions": [
+    {
+      "id": null,
+      "invoice_id": null,
+      "date": "06 JUN",
+      "transaction_date": null,
+      "card": "3825",
+      "description": "Mercado",
+      "amount": 120.5,
+      "type": "compra",
+      "category": "Mercado",
+      "origin": "fatura",
+      "page": 1
+    }
+  ]
+}
+
+Observação:
+Como os dados ainda não foram salvos, id e invoice_id podem ser nulos.
+
+
+3.4. POST /invoices/import
+------------------------------------------------------------
+Importa uma fatura PDF, salva a fatura e persiste suas transações no banco.
+
+Autenticação: obrigatória.
+
+Request:
+- multipart/form-data
+- Campo: file
+
+Response esperado:
+{
+  "invoice_id": 1,
+  "filename": "fatura.pdf",
+  "total_transactions": 50,
+  "total_amount": 1504.08,
+  "message": "Fatura importada com sucesso."
+}
+
+Possíveis erros:
+- 400: arquivo inválido ou sem dados reconhecíveis.
+- 401/403: usuário não autenticado.
+- 422: falha de validação.
+
+Regra importante:
+Após a implementação multiusuário, a fatura importada deve ser vinculada ao usuário autenticado pelo token, nunca por user_id enviado no frontend.
+
+
+3.5. GET /invoices
+------------------------------------------------------------
+Lista as faturas importadas.
+
+Autenticação: obrigatória.
+
+Response 200:
+[
+  {
+    "id": 1,
+    "filename": "fatura_junho.pdf",
+    "due_date": "2026-07-10",
+    "period_start": "2026-06-01",
+    "period_end": "2026-06-30",
+    "total_transactions": 50,
+    "total_amount": 1504.08
+  }
+]
+
+Observação de segurança:
+No modelo final, essa listagem deve retornar somente faturas do usuário autenticado.
+
+
+3.6. GET /invoices/{invoice_id}
+------------------------------------------------------------
+Retorna os detalhes de uma fatura específica.
+
+Autenticação: obrigatória.
+
+Path parameter:
+- invoice_id: ID da fatura.
+
+Response 200:
+{
+  "id": 1,
+  "filename": "fatura_junho.pdf",
+  "metadata": {
+    "due_date": "2026-07-10",
+    "period_start": "2026-06-01",
+    "period_end": "2026-06-30"
+  },
+  "summary": {
+    "total_transactions": 50,
+    "total_amount": 1504.08
+  },
+  "transactions": [
+    {
+      "id": 12,
+      "invoice_id": 1,
+      "date": "06 JUN",
+      "transaction_date": "2026-06-06",
+      "card": "3825",
+      "description": "Jlm Gas",
+      "amount": 170.0,
+      "type": "compra",
+      "category": "Combustível",
+      "origin": "fatura",
+      "page": 2
+    }
+  ],
+  "categories": [
+    {
+      "category": "Combustível",
+      "total_amount": 170.0,
+      "total_transactions": 1
+    }
+  ]
+}
+
+Possíveis erros:
+- 404: fatura não encontrada.
+- 401/403: usuário não autenticado.
+
+Regra de segurança recomendada:
+A busca deve validar invoice_id e user_id simultaneamente.
+
+Exemplo lógico:
+WHERE id = :invoice_id AND user_id = :authenticated_user_id
+
+
+3.7. DELETE /invoices/{invoice_id}
+------------------------------------------------------------
+Exclui uma fatura e suas transações associadas.
+
+Autenticação: obrigatória.
+
+Path parameter:
+- invoice_id: ID da fatura.
+
+Response 200:
+{
+  "message": "Fatura excluída com sucesso.",
+  "invoice_id": 1,
+  "deleted_transactions": 50
+}
+
+Possíveis erros:
+- 404: fatura não encontrada.
+- 401/403: usuário não autenticado.
+
+Regra importante:
+Ao excluir uma fatura, as transações vinculadas também devem ser removidas para evitar registros órfãos.
+
+============================================================
+4. TRANSAÇÕES
+============================================================
+
+Tipos de transação suportados:
+- compra
+- estorno
+- pagamento
+- financiamento
+
+Origens suportadas:
+- fatura
+- lancamento_avulso
+
+
+4.1. GET /transactions/filter-options
+------------------------------------------------------------
+Retorna opções disponíveis para filtros de transações.
+
+Autenticação: obrigatória.
+
+Response 200:
+{
+  "cards": ["3825", "4945"],
+  "categories": ["Mercado", "Saúde", "Combustível"],
+  "types": ["compra", "estorno", "pagamento", "financiamento"],
+  "min_date": "2026-06-01",
+  "max_date": "2026-07-10"
+}
+
+Uso no frontend:
+- Preencher selects dinâmicos de cartão, categoria e tipo.
+- Definir limites de data nos filtros.
+
+Regra de segurança recomendada:
+As opções devem ser calculadas apenas a partir das transações do usuário autenticado.
+
+
+4.2. GET /transactions/filter
+------------------------------------------------------------
+Filtra transações por diferentes critérios.
+
+Autenticação: obrigatória.
+
+Query parameters opcionais:
+- invoice_id: filtra por fatura.
+- card: filtra por cartão.
+- date: filtra por data específica.
+- month: filtra por mês.
+- category: filtra por categoria.
+- type: filtra por tipo.
+- start_date: data inicial.
+- end_date: data final.
+
+Exemplo:
+GET /transactions/filter?category=Mercado&start_date=2026-06-01&end_date=2026-06-30
+
+Response 200:
+{
+  "filters": {
+    "invoice_id": null,
+    "card": null,
+    "date": null,
+    "month": null,
+    "category": "Mercado",
+    "type": null,
+    "start_date": "2026-06-01",
+    "end_date": "2026-06-30"
+  },
+  "total_transactions": 8,
+  "total_amount": 560.4,
+  "transactions": [
+    {
+      "id": 21,
+      "invoice_id": 1,
+      "date": "08 JUN",
+      "transaction_date": "2026-06-08",
+      "card": "3825",
+      "description": "Supermercado",
+      "amount": 140.1,
+      "type": "compra",
+      "category": "Mercado",
+      "origin": "fatura",
+      "page": 3
+    }
+  ]
+}
+
+Regra de cálculo recomendada para total_amount:
+- compra e financiamento entram como gasto positivo.
+- estorno reduz o total.
+- pagamento não deve inflar o total de gastos.
+
+
+4.3. POST /transactions/manual
+------------------------------------------------------------
+Cria uma transação manual, sem necessidade de fatura.
+
+Autenticação: obrigatória.
+
+Request body:
+{
+  "invoice_id": null,
+  "transaction_date": "2026-07-08",
+  "card": "3825",
+  "description": "Farmácia",
+  "amount": 72.5,
+  "category": "Saúde"
+}
+
+Response 201:
+{
+  "id": 51,
+  "invoice_id": null,
+  "date": "08/07/2026",
+  "transaction_date": "2026-07-08",
+  "card": "3825",
+  "description": "Farmácia",
+  "amount": 72.5,
+  "type": "compra",
+  "category": "Saúde",
+  "origin": "lancamento_avulso",
+  "page": 0
+}
+
+Regra importante:
+O frontend não deve enviar user_id. Após o isolamento multiusuário, o backend deve usar o usuário autenticado pelo token.
+
+
+4.4. PATCH /transactions/{transaction_id}
+------------------------------------------------------------
+Atualiza uma transação existente.
+
+Autenticação: obrigatória.
+
+Path parameter:
+- transaction_id: ID da transação.
+
+Request body:
+{
+  "transaction_date": "2026-07-09",
+  "card": "3825",
+  "description": "Farmácia Atualizada",
+  "amount": 80.0,
+  "type": "compra",
+  "category": "Saúde"
+}
+
+Response 200:
+{
+  "id": 51,
+  "invoice_id": null,
+  "date": "09/07/2026",
+  "transaction_date": "2026-07-09",
+  "card": "3825",
+  "description": "Farmácia Atualizada",
+  "amount": 80.0,
+  "type": "compra",
+  "category": "Saúde",
+  "origin": "lancamento_avulso",
+  "page": 0
+}
+
+Possíveis erros:
+- 404: transação não encontrada.
+- 401/403: usuário não autenticado.
+- 422: dados inválidos.
+
+Regra de segurança recomendada:
+A atualização deve validar transaction_id e user_id simultaneamente.
+
+
+4.5. DELETE /transactions/{transaction_id}
+------------------------------------------------------------
+Exclui uma transação.
+
+Autenticação: obrigatória.
+
+Path parameter:
+- transaction_id: ID da transação.
+
+Response 200:
+{
+  "message": "Transação excluída com sucesso.",
+  "transaction_id": 51
+}
+
+Possíveis erros:
+- 404: transação não encontrada.
+- 401/403: usuário não autenticado.
+
+
+4.6. Rotas legadas de transação por fatura
+------------------------------------------------------------
+Também existem rotas no padrão:
+
+PATCH /invoices/{invoice_id}/transactions/{transaction_id}
+DELETE /invoices/{invoice_id}/transactions/{transaction_id}
+
+Essas rotas editam ou removem transações vinculadas a uma fatura específica.
+
+Recomendação técnica:
+Manter temporariamente por compatibilidade, mas priorizar as rotas genéricas:
+
+PATCH /transactions/{transaction_id}
+DELETE /transactions/{transaction_id}
+
+Isso evita duplicidade de regra de negócio e simplifica o frontend.
+
+============================================================
+5. DASHBOARD
+============================================================
+
+5.1. GET /dashboard
+------------------------------------------------------------
+Retorna dados consolidados para análise financeira.
+
+Autenticação: obrigatória.
+
+Query parameters opcionais:
+- invoice_id
+- card
+- category
+- start_date
+- end_date
+
+Exemplo:
+GET /dashboard?category=Mercado&start_date=2026-06-01&end_date=2026-06-30
+
+Response 200:
+{
+  "filters": {
+    "invoice_id": null,
+    "card": null,
+    "category": "Mercado",
+    "start_date": "2026-06-01",
+    "end_date": "2026-06-30"
+  },
+  "overview": {
+    "total_spent": 1504.08,
+    "net_spent": 1436.17,
+    "total_purchases": 50,
+    "average_ticket": 30.08,
+    "largest_purchase": {
+      "transaction_id": 12,
+      "description": "Jlm Gas",
+      "amount": 170.0,
+      "category": "Combustível",
+      "date": "2026-06-06"
+    }
+  },
+  "category_distribution": [
+    {
+      "category": "Mercado",
+      "total_amount": 560.4,
+      "percentage": 37.26,
+      "total_transactions": 8
+    }
+  ],
+  "card_distribution": [
+    {
+      "card": "3825",
+      "total_amount": 900.0,
+      "percentage": 59.84,
+      "total_transactions": 20
+    }
+  ],
+  "merchant_ranking": [
+    {
+      "merchant": "Supermercado",
+      "total_transactions": 5,
+      "total_amount": 420.0,
+      "average_ticket": 84.0
+    }
+  ],
+  "behavior": {
+    "small_purchases": {
+      "threshold": 30.0,
+      "total_transactions": 18,
+      "total_amount": 240.0,
+      "percentage_of_spending": 15.95,
+      "percentage_of_transactions": 36.0
+    },
+    "refunds": {
+      "total_transactions": 1,
+      "total_amount": 67.91
+    },
+    "financing": {
+      "total_transactions": 0,
+      "total_amount": 0.0
+    },
+    "purchases_without_card": {
+      "total_transactions": 2,
+      "total_amount": 110.0,
+      "percentage_of_spending": 7.31
+    }
+  },
+  "featured_insights": [
+    {
+      "type": "categoria_relevante",
+      "severity": "informacao",
+      "title": "Categoria com maior impacto",
+      "message": "Mercado representa 37.26% dos gastos filtrados.",
+      "metric_value": 37.26
+    }
+  ],
+  "additional_insights": []
+}
+
+Principais blocos:
+- filters: filtros aplicados na consulta.
+- overview: indicadores financeiros principais.
+- category_distribution: distribuição dos gastos por categoria.
+- card_distribution: distribuição dos gastos por cartão.
+- merchant_ranking: estabelecimentos com maior recorrência ou gasto.
+- behavior: indicadores comportamentais.
+- featured_insights: insights principais.
+- additional_insights: insights complementares.
+
+Regras analíticas aplicadas:
+- A categoria Outros não deve ser usada para detecção de anomalias.
+- Amostra mínima recomendada para anomalias: 8 registros.
+- Compras pequenas devem indicar participação no volume e no gasto.
+- Pagamentos não devem inflar total de gastos.
+- Estornos devem reduzir gasto líquido.
+
+Regra de segurança recomendada:
+O dashboard deve considerar apenas transações do usuário autenticado.
+
+============================================================
+6. MODELOS PRINCIPAIS
+============================================================
+
+6.1. Usuário
+------------------------------------------------------------
+{
+  "id": 2,
+  "name": "Agnaldo Júnior",
+  "email": "agnaldo@email.com",
+  "active": true,
+  "privacy_terms_accepted_at": "2026-07-10T15:42:00Z",
+  "privacy_terms_version": "1.0"
+}
+
+Campos sensíveis:
+- password_hash não deve ser retornado em nenhuma resposta da API.
+
+
+6.2. Fatura
+------------------------------------------------------------
+{
+  "id": 1,
+  "filename": "fatura_junho.pdf",
+  "due_date": "2026-07-10",
+  "period_start": "2026-06-01",
+  "period_end": "2026-06-30"
+}
+
+Campo recomendado para próxima evolução:
+- user_id: vincula a fatura ao usuário autenticado.
+
+
+6.3. Transação
+------------------------------------------------------------
+{
+  "id": 12,
+  "invoice_id": 1,
+  "date": "06 JUN",
+  "transaction_date": "2026-06-06",
+  "card": "3825",
+  "description": "Jlm Gas",
+  "amount": 170.0,
+  "type": "compra",
+  "category": "Combustível",
+  "origin": "fatura",
+  "page": 2
+}
+
+Campo recomendado para próxima evolução:
+- user_id: vincula a transação ao usuário autenticado.
+
+============================================================
+7. CÓDIGOS DE STATUS
+============================================================
+
+200 OK
+A requisição foi processada com sucesso.
+
+201 Created
+O recurso foi criado com sucesso.
+
+400 Bad Request
+A requisição possui erro de regra de negócio, como senhas divergentes.
+
+401 Unauthorized
+Usuário não autenticado ou credenciais inválidas.
+
+403 Forbidden
+Token ausente, inválido ou sem permissão para acessar o recurso.
+
+404 Not Found
+Recurso não encontrado.
+
+409 Conflict
+Conflito com estado atual do banco, como e-mail já cadastrado.
+
+422 Unprocessable Entity
+Dados inválidos ou campos obrigatórios não atendidos.
+
+500 Internal Server Error
+Erro inesperado no servidor.
+
+============================================================
+8. SEGURANÇA
+============================================================
+
+8.1. Autenticação
+------------------------------------------------------------
+A API utiliza JWT Bearer Token. Após o login, o token deve ser enviado no header Authorization.
+
+Header:
+Authorization: Bearer <access_token>
+
+
+8.2. Senhas
+------------------------------------------------------------
+As senhas devem ser armazenadas somente como hash. A API nunca deve retornar senha ou password_hash em responses.
+
+
+8.3. Cadastro e privacidade
+------------------------------------------------------------
+O cadastro exige aceite dos Termos de Uso e ciência do Aviso de Privacidade.
+
+O backend registra:
+- data e hora do aceite;
+- versão dos termos apresentados.
+
+
+8.4. Isolamento multiusuário
+------------------------------------------------------------
+Ponto pendente e obrigatório para produção.
+
+A autenticação identifica quem é o usuário, mas os dados financeiros precisam ser vinculados a esse usuário.
+
+Próxima evolução recomendada:
+- adicionar user_id em invoices;
+- adicionar user_id em transactions;
+- filtrar todas as consultas por user_id;
+- validar user_id em GET, PATCH e DELETE por ID;
+- calcular dashboard apenas com dados do usuário autenticado;
+- calcular filter-options apenas com dados do usuário autenticado.
+
+Regra central:
+O frontend nunca deve enviar user_id para definir dono do recurso. O backend deve obter essa informação exclusivamente a partir do token JWT.
+
+============================================================
+9. PADRÕES DE NOMENCLATURA
+============================================================
+
+9.1. Rotas
+------------------------------------------------------------
+Usar substantivos no plural para recursos principais:
+- /invoices
+- /transactions
+
+Usar verbos apenas quando a ação não representa CRUD simples:
+- /invoices/import
+- /invoices/parse
+- /transactions/filter
+
+
+9.2. Campos JSON
+------------------------------------------------------------
+A API utiliza snake_case nos campos JSON.
+
+Exemplos:
+- access_token
+- token_type
+- transaction_date
+- invoice_id
+- privacy_acceptance
+
+
+9.3. Frontend
+------------------------------------------------------------
+O frontend pode usar camelCase internamente, mas deve converter os parâmetros enviados à API quando necessário.
+
+Exemplo frontend:
+startDate
+
+Exemplo API:
+start_date
+
+============================================================
+10. FLUXO RECOMENDADO DO USUÁRIO
+============================================================
+
+1. Usuário acessa /register.
+2. Preenche nome, e-mail e senha.
+3. Marca o aceite dos Termos de Uso e Aviso de Privacidade.
+4. API cria o usuário.
+5. Usuário acessa /login.
+6. API retorna JWT.
+7. Frontend envia o JWT nas rotas privadas.
+8. Usuário importa faturas.
+9. Usuário consulta transações e dashboard.
+10. Após a evolução multiusuário, cada usuário verá apenas seus próprios dados.
+
+============================================================
+11. CHECKLIST PARA PRÓXIMA ETAPA
+============================================================
+
+[ ] Adicionar user_id no model de Fatura.
+[ ] Adicionar user_id no model de Transacao.
+[ ] Criar migração/backfill para dados existentes.
+[ ] Associar faturas importadas ao usuário autenticado.
+[ ] Associar transações importadas ao usuário autenticado.
+[ ] Associar lançamentos manuais ao usuário autenticado.
+[ ] Filtrar GET /invoices por usuário.
+[ ] Filtrar GET /invoices/{invoice_id} por usuário.
+[ ] Proteger DELETE /invoices/{invoice_id} por usuário.
+[ ] Filtrar GET /transactions/filter por usuário.
+[ ] Filtrar GET /transactions/filter-options por usuário.
+[ ] Proteger PATCH /transactions/{transaction_id} por usuário.
+[ ] Proteger DELETE /transactions/{transaction_id} por usuário.
+[ ] Filtrar GET /dashboard por usuário.
+[ ] Testar com pelo menos dois usuários diferentes.
+
+============================================================
+12. OBSERVAÇÕES FINAIS
+============================================================
+
+Esta documentação descreve o estado atual da API e registra os pontos estruturais necessários para tornar o Alpha Gestão seguro em um cenário multiusuário.
+
+A autenticação já está implementada. A próxima prioridade técnica deve ser o isolamento de dados por usuário, pois ele é essencial para segurança, privacidade e conformidade do produto.
